@@ -1,0 +1,69 @@
+---
+title: "EDA_traffic"
+author: "Thomas Nguyen"
+date: "30/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(fpp3)
+```
+
+
+```{r}
+hourly_traffic_cbd <- readRDS(here::here("D:/Study/Monash/Semester 4/Air-traffic-Project/data/clean-data/traffic/hourly_traffic_cbd.RDS")) %>%
+  # after rerun the 
+```
+
+
+```{r}
+daily_traffic_2019 <- readRDS(here::here("data/clean-data/traffic/daily_traffic_2019.RDS"))
+daily_traffic_2020 <- readRDS(here::here("data/clean-data/traffic/daily_traffic_2020.RDS"))
+
+daily_traffic_2019_summary <- daily_traffic_2019 %>%
+  group_by(date) %>% 
+  summarise(mean_daily_traffic_volume = mean(traffic_volume))
+
+
+daily_traffic_2020_summary <- daily_traffic_2020 %>%
+  group_by(date) %>% 
+  summarise(mean_daily_traffic_volume = mean(traffic_volume))
+
+```
+## EDA traffic 2020
+### EDA for Second lockdown time (9th July 2020 to Tuesday 27th October 2020), 111 days 
+
+Thanks for gg_season, Dr. Rob and Mitchell <3
+
+
+```{r}
+traffic_dat <- rbind(daily_traffic_2019_summary, daily_traffic_2020_summary) %>% as_tsibble() %>% fill_gaps()
+
+
+gg_season(traffic_dat, pal = scales::hue_pal()(2))+
+  theme_bw()
+
+```
+
+
+```{r}
+traffic_ld <- traffic_dat %>%   
+  filter(date >= "2019-07-11" & date <= "2019-10-29" | 
+         date >= "2020-07-09" & date <= "2020-10-27") %>%
+  fill_gaps()
+
+
+gg_season(traffic_ld, pal = scales::hue_pal()(2))+
+  theme_bw()
+
+
+
+```
+

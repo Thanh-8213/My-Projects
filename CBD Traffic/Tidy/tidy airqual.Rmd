@@ -1,0 +1,230 @@
+---
+title: "Airqual_datatidy"
+author: "Thomas Nguyen"
+date: "28/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+
+
+## 2019 data
+
+```{r}
+airqual_2019 <- read_excel(here::here("data/raw-data/Vic-air/2019_All_sites_air_quality_hourly_avg_AIR-I-F-V-VH-O-S1-DB-M2-4-0.xlsx"),
+                           sheet = "2019") %>%
+  mutate(hourly = ymd_hms(sample_datetime),
+         daily_date = date(hourly),
+         value = as.numeric(value))  %>%
+  filter(param_short_name %in% c("PM10",  "O3",   "CO",    "NO2",   "PM2.5", "SO2")) %>%
+  rename("location_name" = "sp_name",
+         "parameter_name" = "param_short_name")
+```
+
+
+
+# 2020 data
+
+Small annoyance: the data had a date columns with values like this: "2020-01-01 UTC". I did not really care about it at first but it make filtering data harder.
+```{r}
+# 2020 data has Newborough, which does not appear in 2019 data
+
+# Small annoyance
+airqual_2020 <- read_excel(here::here("data/raw-data/Vic-air/2020-01-01_to_2021-06-30_Air_Data_Validated.xlsx"),
+                                      sheet = "AllData") %>%
+  # Data have date by day already 
+  mutate(daily_date = ymd(date),
+         hourly = ymd_hms(datetime_local),
+         value = as.numeric(value))
+# convert from hourly to daily
+
+airqual_2020withnewborough <- airqual_2020 %>%
+  filter(daily_date < "2021-01-01",
+         parameter_name %in% c("PM10",  "O3",   "CO",    "NO2",   "PM2.5", "SO2"))
+
+airqual_2020 <- airqual_2020 %>%
+  filter(daily_date < "2021-01-01",
+         parameter_name %in% c("PM10",  "O3",   "CO",    "NO2",   "PM2.5", "SO2"), 
+         location_name != "Newborough") 
+
+```
+
+
+```{r}
+# 2020 data has Newborough, which does not appear in 2019 data
+
+unique(airqual_2019$location_name)
+str_sort(unique(airqual_2020$location_name))
+unique(airqual_2019$parameter_name)
+unique(airqual_2020$parameter_name)
+```
+
+## Check for missing values
+```{r}
+library(naniar)
+miss_var_summary(airqual_2019)
+miss_var_summary(airqual_2020)
+```
+
+
+## Check to see the differences in number of rows between 2020 and 2019
+```{r} 
+## A day in 2019 had more rows than 2020
+airqual_2020 %>% select(hourly, daily_date, location_name, value, parameter_name) %>% 
+  group_by(daily_date) %>% 
+  summarise(n = n())
+airqual_2019 %>% select(hourly, daily_date, location_name, value, parameter_name) %>% 
+  group_by(daily_date) %>% 
+  summarise(n = n())
+
+airqual20200106 <- airqual_2020 %>% filter(daily_date == "2020-01-06")
+airqual20190106 <- airqual_2019 %>% filter(daily_date == "2019-01-06")
+ airqual20200106 %>% filter(parameter_name == "PM2.5") %>%
+  ggplot(aes(x = hourly, y = value))+
+  geom_line()+
+  facet_wrap(~location_name)
+
+airqual20190106 %>% filter(parameter_name == "PM2.5")%>%
+  ggplot(aes(x = hourly, y = value))+
+  geom_line()+
+  facet_wrap(~location_name)
+
+airqual_2019 %>% ggplot(aes(x = hourly, y = value))+
+  geom_line()+
+  facet_wrap(parameter_name~location_name, scales = "free")
+
+# Overall, PM2.5 has the smallest number of missing/ unavailable values
+airqual_2020 %>% ggplot(aes(x = hourly, y = value))+
+  geom_line()+
+  facet_wrap(parameter_name~location_name, scales = "free")
+
+```
+## Save the files
+```{r}
+# Save multiple files
+name_list <- list("name")
+
+saveRDS(airqual_2019, file = here::here("data/raw-data/Vic-air/airqual_2019.RDS"))
+saveRDS(airqual_2020, file = here::here("data/raw-data/Vic-air/airqual_2020.RDS"))
+```
+
+
+
+## Get the lockdown time for 2019 and 2020
+```{r}
+
+airqual_2019_ld <- airqual_2019 %>% 
+    filter(daily_date >= "2019-07-11" & daily_date <= "2019-10-29") %>% 
+  select(hourly, location_name, value, parameter_name, daily_date) 
+
+airqual_2020_ld <- airqual_2020 %>%
+    filter(daily_date >= "2020-07-09" & daily_date <= "2020-10-27")%>% 
+  select(hourly, location_name, value, parameter_name, daily_date) 
+
+airqual_ld <- rbind(airqual_2019_ld, airqual_2020_ld) %>%
+  mutate(year = year(hourly))
+
+#Change airqual_ld to daily
+airqual_ld_daily <- airqual_ld %>% 
+  group_by(daily_date) %>%
+  summarise(value = mean(value)) 
+
+
+
+saveRDS(airqual_2019_ld, file = here::here("data/raw-data/Vic-air/airqual_2019_ld.RDS"))
+saveRDS(airqual_2020_ld, file = here::here("data/raw-data/Vic-air/airqual_2020_ld.RDS"))
+saveRDS(airqual_ld, file = here::here("data/clean-data/air/airqual_ld.RDS"))
+saveRDS(airqual_ld_daily, file = here::here("data/clean-data/air/airqual_ld_daily.RDS"))
+
+```
+### Make a big file for all years from 2016-2019
+
+```{r}
+path <- here::here("data/raw-data/Vic-air/2016-2019")
+files <- list.files(path, pattern = ".xlsx")
+
+```
+
+
+```{r}
+
+# From https://departmentfortransport.github.io/R-cookbook/data-import.html
+# and https://stackoverflow.com/questions/51120287/reading-multiple-xlsx-files-each-with-multiple-sheets-purrr
+read_and_combine_sheets <- function(path){
+  readxl::excel_sheets(path = path) %>% 
+  purrr::set_names() %>% 
+   purrr::map_df(
+     ~ readxl::read_excel(path = path, sheet = .x)
+     , .id = "sheet"
+   )
+}
+temp <- map_dfr(str_c(path, "/", files), read_and_combine_sheets)
+
+```
+
+
+```{r}
+airqual_tser <- temp %>%
+  filter(sheet %in% c("Data", "2018","2019")) %>%
+    mutate(hourly = ymd_hms(sample_datetime),
+         daily_date = date(hourly),
+         value = as.numeric(value))  %>%
+  filter(param_short_name %in% c("PM10",  "O3",   "CO",    "NO2",   "PM2.5", "SO2")) %>%
+  rename("location_name" = "sp_name",
+         "parameter_name" = "param_short_name",
+         "unit_of_measure"= "param_std_unit_of_measure")
+
+airqual_tser <- airqual_tser %>% 
+  select(hourly, daily_date, location_name, latitude, longitude, parameter_name, value, unit_of_measure) 
+```
+
+```{r}
+
+# Read data for 2020 and 2021
+airqual_2020_21 <- read_excel(here::here("data/raw-data/Vic-air/2020-01-01_to_2021-06-30_Air_Data_Validated.xlsx"),
+                                      sheet = "AllData") %>%
+  # Data have date by day already 
+  mutate(daily_date = ymd(date),
+         hourly = ymd_hms(datetime_local),
+         value = as.numeric(value))  %>%
+  filter(parameter_name %in% c("PM10",  "O3",   "CO",    "NO2",   "PM2.5", "SO2"))
+
+airqual <- airqual_2020_21 %>% 
+  select(hourly, daily_date, location_name, latitude, longitude, parameter_name, value, unit_of_measure) %>% 
+  bind_rows(airqual_tser) %>% 
+  arrange(hourly)
+
+```
+
+```{r}
+airqual_tsibble <- as_tsibble(airqual, index = hourly, key = c(location_name, parameter_name)) %>% 
+  mutate(
+    Time = hour(hourly),
+    Date = daily_date,
+    Day = lubridate::wday(Date, label = TRUE),
+    Weekend = (Day %in% c("Sun", "Sat"))) %>%
+  select(-daily_date)
+
+
+
+
+saveRDS(airqual_tsibble, file = here::here("data/raw-data/Vic-air/airqual_tsibble.RDS"))
+
+```
+
+```{r}
+airqual_tsibble %>% filter (location_name == "Alphington",
+                            parameter_name == "CO") %>%
+  autoplot(value)
+
+```
+

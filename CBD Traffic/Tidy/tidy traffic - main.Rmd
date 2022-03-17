@@ -1,0 +1,387 @@
+---
+title: "traffic_cleandata"
+author: "Thomas Nguyen"
+date: "29/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Bug?? summarise convert date to number
+Data source: https://discover.data.vic.gov.au/dataset/traffic-signal-volume-data
+```{r}
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(data.table)
+
+```
+Error: std::bad_alloc
+
+
+```{r}
+## Function to read file
+
+read_csvlist <- function(path){
+  files <- list.files(path)
+  
+  df <- map_dfr(str_c(path, "/", files), fread)
+  return(df)
+}
+
+
+## Function to get daily value
+
+daily_traffic_summary <- function(data){
+ daily_data <-  data  %>%
+    select(NB_SCATS_SITE, QT_INTERVAL_COUNT, NB_DETECTOR, QT_VOLUME_24HOUR) %>%
+    mutate(date = as_date(QT_INTERVAL_COUNT)) %>%
+    group_by(NB_SCATS_SITE, date) %>%
+    summarise(traffic_volume = sum(QT_VOLUME_24HOUR))
+ 
+ return(daily_data)
+}
+
+
+
+## Function to get hourly value
+## Suggestion by Dan Simpson
+replace_with_zero <- function(x) {
+  ifelse(x < 0, yes = 0, no = x)
+}
+
+hourly_traffic_cbd_summary <- function(data){
+  names(data)[4:99] <- seq(0,24, by = 0.25) 
+
+  hourly_data <- data %>%
+    # Trim potential white space
+  mutate(NM_REGION = str_trim(NM_REGION)) %>%
+    # Get Melboune City data
+  filter(NM_REGION %in% c("MC1", "MC2", "MC3")) %>%
+  select(1:99) %>% 
+    # Replace every values that is negative to 0
+  mutate_if(is.numeric, replace_with_zero) %>%
+    # Summarise by Scats site
+  group_by(NB_SCATS_SITE, QT_INTERVAL_COUNT) %>%
+  summarise_if(is.numeric, list(sum)) %>%
+  ungroup() %>%
+    # Convert the date to longer form
+  pivot_longer(4:99, names_to = "hour", values_to = "value" ) %>%
+    # Get only the integer number of hour
+  mutate(year = year(QT_INTERVAL_COUNT),
+         month = month(QT_INTERVAL_COUNT),
+         day = day(QT_INTERVAL_COUNT),
+         hour = as.numeric(substring(hour,1,2)),
+         hourly = make_datetime(year, month,day, hour)) %>%
+  group_by(hourly, NB_SCATS_SITE) %>%
+  summarise(hourly_value = sum(value)) %>%
+  ungroup()
+  
+  return(hourly_data)
+}
+```
+
+
+
+
+## Hourly traffic volume for Melbourne city/ Random forest model
+
+Since the data store 15 minutes value in COLUMNS, I need to rotate/ gather them into rows, so I can convert them to hourly data. The problem is, pivot longer couldn't work.
+Pivot longer is not an option yet => I was forced to deal with millions rows of data & 100 variables.
+What I need to do: Get ALL the negative values out. Group by site and date, then transform all of them into longer form, so all the variables can be converted into hours
+
+
+```{r}
+# WHY HAVEN'T NO ONE WRITTEN SOMETHING LIKE THIS YET?
+# Inspired by: https://stackoverflow.com/questions/40724126/replace-negative-values-with-na-for-all-columns
+
+# "if the value is less than 0, put 0, else leave it alone"
+replace_with_zero <- function(x) {
+  ifelse(x < 0, yes = 0, no = x)
+}
+
+```
+
+
+
+```{r}
+# Bug here, mutate each change everything to numeric will convert to dbl 
+# hourly_dat <- VSDATA_20200430 %>% 
+#   filter(NM_REGION %in% c("MC1", "MC2", "MC3")) %>%
+#   select(1:99) %>% 
+#   mutate_each(replace_with_zero) %>%
+#   group_by(NB_SCATS_SITE, ) %>%
+#   summarise_all(list(sum)) 
+# hourly_dat
+# 
+```
+# Read and write hourly traffic for 2019 and 2020
+
+
+## 2021 data
+
+```{r}
+## there was a drop in number of hourly data from 03/2021 till 10/2021
+## Number of rows in dataset (using read_csvlist) are the same => Something worng with the hourly_traffic_cbd_summary
+hourly_traffic_cbd_202101 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202101/")) %>%
+  hourly_traffic_cbd_summary()
+hourly_traffic_cbd_202102 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202102/")) %>%
+  hourly_traffic_cbd_summary()
+hourly_traffic_cbd_202103 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202103/")) %>%
+  hourly_traffic_cbd_summary()
+hourly_traffic_cbd_202104 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202104/")) %>%
+  hourly_traffic_cbd_summary()
+hourly_traffic_cbd_202105 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202105/")) %>%
+  hourly_traffic_cbd_summary()
+hourly_traffic_cbd_202106 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202106/")) %>%
+  hourly_traffic_cbd_summary()
+hourly_traffic_cbd_202107 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202107/")) %>%
+  hourly_traffic_cbd_summary()
+hourly_traffic_cbd_202108 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202108/")) %>%
+  hourly_traffic_cbd_summary()
+## Something wrong with 2021-09 data
+# hourly_traffic_cbd_202109 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202109/")) %>%
+#   hourly_traffic_cbd_summary()
+hourly_traffic_cbd_202110 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202110/")) %>%
+  hourly_traffic_cbd_summary()
+hourly_traffic_cbd_202112 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202112/")) %>%
+  hourly_traffic_cbd_summary()
+
+
+# Use read_csv to read 2021-09 and 2021-11 file
+filepath202109 <- here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202109/")
+files202109 <- list.files(filepath202109)
+  
+hourly_traffic_cbd_202109 <- map_dfr(str_c(filepath202109, "/", files202109), read_csv) %>%
+    hourly_traffic_cbd_summary()
+
+filepath <- here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202111/")
+files <- list.files(filepath)
+
+hourly_traffic_cbd_202111 <- map_dfr(str_c(filepath, "/", files), read_csv) %>%
+    hourly_traffic_cbd_summary()
+
+# Combine everything
+duplicates(hourly_traffic_cbd_2021)
+hourly_traffic_cbd_2021 <- rbind(
+      hourly_traffic_cbd_202101,
+      hourly_traffic_cbd_202102,
+      hourly_traffic_cbd_202103,
+      hourly_traffic_cbd_202104,
+      hourly_traffic_cbd_202105,
+      hourly_traffic_cbd_202106,
+      hourly_traffic_cbd_202107,
+      hourly_traffic_cbd_202108,
+      hourly_traffic_cbd_202109,
+      hourly_traffic_cbd_202110,
+      hourly_traffic_cbd_202111,
+      hourly_traffic_cbd_202112
+      )
+hourly_traffic_cbd_2021_tsi <- hourly_traffic_cbd_2021 %>% as_tsibble(index = hourly)
+```
+
+
+```{r}
+# Lots of lines in 202105 were not read 
+# Debug
+ # hourly_dat <- traffic_cbd_202105 %>% 
+ #   # The problem lies here, there is lots of white space in the values in NM_REGION
+ #   # So trim the white space out
+ #   mutate(NM_REGION = str_trim(NM_REGION))
+
+```
+
+```{r}
+# Debug: Can not read 09/2021 file
+# Error: Can't combine `..1$QT_INTERVAL_COUNT` <datetime<UTC>> and `..2$QT_INTERVAL_COUNT` <date>.
+# Something is wrong with the date and time (some of the file, QT_INTERVAL_COUNT 
+# is registered as date instead of dttm. Fread can't handle it => Use read_csv instead
+# 
+# filepath <- here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202109/")
+# files <- list.files(filepath)
+#   
+# hourly_traffic_cbd_202109 <- map_dfr(str_c(filepath, "/", files), read_csv) %>%
+#     hourly_traffic_cbd_summary()
+# 
+# hourly_traffic_cbd_202109 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202109/")) %>%
+
+```
+
+
+### 2020 data
+
+```{r}
+# Jan 2020
+hourly_traffic_cbd_202001 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202001/")) %>%
+  hourly_traffic_cbd_summary()
+
+
+# Feb 2020
+hourly_traffic_cbd_202002 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202002/")) %>%
+  hourly_traffic_cbd_summary()
+
+# March 2020
+traffic202003 <- read_csvlist(here::here("data/raw-data/raw-traffic/VSDATA_202003"))
+hourly_traffic_cbd_202003 <- hourly_traffic_cbd_summary(traffic202003)
+
+# April 2020 data
+hourly_traffic_cbd_202004 <- read_csvlist(here::here("data/raw-data/raw-traffic/VSDATA_202004")) %>%
+  hourly_traffic_cbd_summary()
+
+### May 2020 data
+
+hourly_traffic_cbd_202005 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202005/")) %>%
+  hourly_traffic_cbd_summary()
+
+### Jun 2020 data
+hourly_traffic_cbd_202006 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202006/")) %>%
+  hourly_traffic_cbd_summary()
+
+
+### Jul 2020 data
+hourly_traffic_cbd_202007 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202007/")) %>%
+  hourly_traffic_cbd_summary()
+
+
+### Aug 2020 data
+hourly_traffic_cbd_202008 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202008/")) %>%
+  hourly_traffic_cbd_summary()
+
+
+### Sep 2020 data
+hourly_traffic_cbd_202009 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202009/")) %>%
+  hourly_traffic_cbd_summary()
+
+
+### Oct 2020 data
+hourly_traffic_cbd_202010 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202010/")) %>%
+  hourly_traffic_cbd_summary()
+
+
+### Nov 2020 data
+hourly_traffic_cbd_202011 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202011/")) %>%
+  hourly_traffic_cbd_summary()
+
+
+### Dec 2020 data
+hourly_traffic_cbd_202012 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_202012/")) %>%
+  hourly_traffic_cbd_summary()
+
+##2020-30-04 data
+VSDATA_20200430 <- read_csv(here::here("data/raw-data/raw-traffic/Error files/VSDATA_20200430.csv"))
+
+names(VSDATA_20200430)[4:99] <- seq(0,24, by = 0.25) 
+
+hourly_dat_20200430 <- VSDATA_20200430 %>% 
+     # Get Melboune City data
+   filter(NM_REGION %in% c("MC1", "MC2", "MC3")) %>%
+   select(1:99)  %>%
+     # Replace every values that is negative to 0
+   mutate_if(is.numeric, replace_with_zero) %>%
+     # Summarise by Scats site
+   group_by(NB_SCATS_SITE, QT_INTERVAL_COUNT) %>%
+   summarise_if(is.numeric, list(sum)) %>%
+   ungroup() %>%
+     # Convert the date to longer form
+   pivot_longer(4:99, names_to = "hour", values_to = "value" ) %>%
+     # Get only the integer number of hour
+  # fix the date. Change it to 2020-04-30
+   mutate(QT_INTERVAL_COUNT = as.POSIXct("2020-04-30 11:00:00"),
+          year = year(QT_INTERVAL_COUNT),
+         month = month(QT_INTERVAL_COUNT),
+         day = day(QT_INTERVAL_COUNT),
+         hour = as.numeric(substring(hour,1,2)),
+         hourly = make_datetime(year, month,day, hour)) %>%
+  group_by(hourly, NB_SCATS_SITE) %>%
+  summarise(hourly_value = sum(value)) %>%
+  ungroup()
+```
+
+```{r}
+hourly_traffic_cbd_2020 <- bind_rows(
+      hourly_traffic_cbd_202001,
+      hourly_traffic_cbd_202002,
+      hourly_traffic_cbd_202003,
+      hourly_traffic_cbd_202004,
+      hourly_dat_20200430,
+      hourly_traffic_cbd_202005,
+      hourly_traffic_cbd_202006,
+      hourly_traffic_cbd_202007,
+      hourly_traffic_cbd_202008,
+      hourly_traffic_cbd_202009,
+      hourly_traffic_cbd_202010,
+      hourly_traffic_cbd_202011,
+      hourly_traffic_cbd_202012
+      )
+
+```
+
+
+## 2019 data
+
+
+```{r}
+# Error: cannot allocate vector of size 75.9 Mb
+hourly_traffic_cbd_20190102 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_201901-02/")) %>%
+  hourly_traffic_cbd_summary()
+
+hourly_traffic_cbd_201903 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_201903/")) %>%
+  hourly_traffic_cbd_summary()
+
+hourly_traffic_cbd_201904 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_201904/")) %>%
+  hourly_traffic_cbd_summary()
+
+hourly_traffic_cbd_20190507 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_201905-07/")) %>%
+  hourly_traffic_cbd_summary()
+
+hourly_traffic_cbd_20190810 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_201908-10/")) %>%
+  hourly_traffic_cbd_summary()
+
+hourly_traffic_cbd_20191112 <- read_csvlist(here::here("data/raw-data/raw-traffic/Rar-file/VSDATA_201911-12/")) %>%
+  hourly_traffic_cbd_summary()
+
+```
+
+```{r}
+hourly_traffic_cbd_2019 <- rbind(hourly_traffic_cbd_20190102,
+      hourly_traffic_cbd_201903,
+      hourly_traffic_cbd_201904,
+      hourly_traffic_cbd_20190507,
+      hourly_traffic_cbd_20190810,
+      hourly_traffic_cbd_20191112)
+```
+
+```{r}
+saveRDS(hourly_traffic_cbd_2019, file = here::here("data/clean-data/traffic/hourly_traffic_cbd_2019.RDS"))
+saveRDS(hourly_traffic_cbd_2020, file = here::here("data/clean-data/traffic/hourly_traffic_cbd_2020.RDS"))
+saveRDS(hourly_traffic_cbd_2021, file = here::here("data/clean-data/traffic/hourly_traffic_cbd_2021.RDS"))
+
+# Final Check & further update
+hourly_traffic_cbd_2019 <- readRDS(here::here("data/clean-data/traffic/hourly_traffic_cbd_2019.RDS"))
+hourly_traffic_cbd_2020 <- readRDS(here::here("data/clean-data/traffic/hourly_traffic_cbd_2020.RDS"))
+hourly_traffic_cbd_2021 <- readRDS(here::here("data/clean-data/traffic/hourly_traffic_cbd_2021.RDS"))
+
+## Combine all traffic in 2019-2021
+hourly_traffic_cbd <- bind_rows(hourly_traffic_cbd_2019, hourly_traffic_cbd_2020,hourly_traffic_cbd_2021)
+saveRDS(hourly_traffic_cbd, file = here::here("data/clean-data/traffic/hourly_traffic_cbd.RDS"))
+
+```
+
+```{r}
+hourly_traffic_cbd <- readRDS(here::here("D:/Study/Monash/Semester 4/Air-traffic-Project/data/clean-data/traffic/hourly_traffic_cbd.RDS"))
+
+# Get the hourly volume for all of CBD
+hourly_traffic_cbd <- hourly_traffic_cbd %>% 
+  group_by(hourly) %>% 
+  summarise(cbd_volume = mean(hourly_value))
+
+# Transform to tsibble
+hourly_traffic_cbd_tsibble <-  as_tsibble(hourly_traffic_cbd, index = hourly)
+
+# Check for gaps in data
+# Gaps are in 2019-12-12, 2020-06-03, 2020-08-07, 2020-09-25
+hourly_traffic_cbd_tsibble %>% scan_gaps()
+
+```
+

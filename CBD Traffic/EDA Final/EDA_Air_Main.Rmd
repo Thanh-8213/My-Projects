@@ -1,0 +1,102 @@
+---
+title: "Airqual_EDA"
+author: "Thomas Nguyen"
+date: "30/09/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(patchwork)
+library(fpp3)
+```
+
+## Second lockdown time (9th July 2020 to Tuesday 27th October 2020), 111 days
+
+```{r}
+airqual_ld <- readRDS(here::here("data/clean-data/air/airqual_ld.RDS"))
+```
+## PM2.5
+```{r}
+plotby_year(airqual_ld, "PM2.5")
+## Alphington, Churchill and Morwell East are no good
+```
+
+## SO2
+```{r}
+plotby_year(airqual_ld, "SO2")
+# Altona North is no good, Alphington has 11% unavailable values. 
+```
+
+## CO
+```{r}
+plotby_year(airqual_ld, "CO")
+# Altona North is no good, Alphington has 9% unavailable values. 
+# Check Ck_NA_airqual for detailed report
+```
+
+## NO2
+```{r}
+plotby_year(airqual_ld, "NO2")
+# Altona North + Dandenong + Traralgon are no good, Alphington has 9% unavailable values. 
+# Check Ck_NA_airqual for detailed report
+```
+
+
+## O3
+```{r}
+plotby_year(airqual_ld, "O3")
+# Morwell South are no good, Alphington has 9% unavailable values. 
+# Check Ck_NA_airqual for detailed report
+```
+
+## PM10
+
+```{r}
+plotby_year(airqual_ld, "PM10")
+# Alphington: 9%, Geelong SouthL 7%
+```
+
+
+```{r}
+pm2.5_summary <- airqual_ld %>% 
+  filter(!location_name %in% c("Alphington", "Churchill", "Morwell East")) %>%
+  getdiff("PM2.5")
+
+
+so2_summary <- airqual_ld %>% 
+  filter(!location_name %in% c("Altona North")) %>%
+  getdiff("SO2")
+
+
+co_summary <- airqual_ld %>% 
+  filter(!location_name %in% c("Altona North")) %>%
+  getdiff("CO")
+
+no2_summary <- airqual_ld %>% 
+  filter(!location_name %in% c("Altona North", "Dandenong", "Traralgon")) %>%
+  getdiff("NO2")
+
+o3_summary <- airqual_ld %>% 
+  filter(!location_name %in% c("Morwell South")) %>%
+  getdiff("O3")
+
+PM10_summary <- airqual_ld %>% 
+  filter(!location_name %in% c("Morwell South")) %>%
+  getdiff("PM10")
+
+```
+
+OK let's start:
+
+PM2.5 slightly increased in most location. (Highest is Geelong South 18.4%). Only Traralgon decreased 8%
+
+SO2: Very serious, Morwell East increase 442%, followed by Morwell South at 46.8%. Majjor decrease in Geelong South at -23.7%
+
+CO: Increased at all sites, the highest is at Alphington and Footscray, nearly 50%

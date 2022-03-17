@@ -1,0 +1,120 @@
+---
+title: "Melbourne CBD traffic Analysis"
+author: "Thomas Nguyen"
+date: "`r Sys.Date()`"
+
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.path = "Images/")
+```
+
+```{r lib, include= FALSE}
+# https://chartingtransport.com/2020/05/03/what-impact-has-the-2020-covid-19-pandemic-had-on-road-traffic-volumes-in-victoria/
+
+library(tidyverse)
+library(fpp3)
+library(sugrrants)
+```
+
+## Introduction
+Roads in Victoria were noticeably quieter during the depth of the pandemic shutdown, but just how much did traffic reduced? In this report, we will have a close look at the traffic volume in the CBD from January 2019 to November 2021. Traffic signal loop vehicle count data is downloaded from [Victoria government open data website](https://discover.data.vic.gov.au/dataset/traffic-signal-volume-data), cleaned and tidied by the author. 
+The data has a few limitations:  
+- It may under-count motorway-based and rural area where fewer detectors are installed.  
+- There can be faulty data (eg. negative values, missing values, wrong values, etc.). Errors in recorded values is expected, so I attemped using average of count to ultilize the power of Central Limit Theorem.  
+- Vehicles may be counted multiple times as they pass through an intersection. Hopefully this has minimal impact on overall traffic volume trends.   
+
+
+
+```{r}
+hourly_traffic_cbd <- readRDS(here::here("D:/Study/Monash/Semester 4/Air-traffic-Project/data/clean-data/traffic/hourly_traffic_cbd.RDS"))
+climate_dat <- readRDS("D:/Study/Monash/Semester 4/Air-traffic-Project/data/clean-data/weather/climate_dat.RDS")
+
+
+# Get the hourly volume for all of CBD
+hourly_traffic_cbd <- hourly_traffic_cbd %>% 
+  group_by(hourly) %>% 
+  summarise(cbd_volume = mean(hourly_value))
+
+traffic <- hourly_traffic_cbd %>% mutate(year = year(hourly),
+                                       week = week(hourly),
+                                       day = day(hourly),
+                                       hour = hour(hourly),
+                                       date = date(hourly)) 
+# Check for missing values
+# traffic %>% vis_miss()
+
+
+mel_lockdown <- c(as_date(dmy("31-03-2020"): dmy("12-05-2020")),
+                  as_date(dmy("09-07-2020"): dmy("27-10-2020")),
+                  as_date(dmy("13-02-2021"): dmy("17-02-2021")),
+                  as_date(dmy("28-05-2021"): dmy("10-06-2021")),
+                  as_date(dmy("16-07-2021"): dmy("27-07-2021")),
+                  as_date(dmy("15-08-2021"): dmy("22-10-2021"))
+
+)
+                          
+mypallete <- c("#000080", "#F87217", "#101820", "#CC5500", "#E94B3C", "#1B7931", "#2a52be","#ED2939", "#b58d6e","#803500", "#5e001f", "#00e1d9")
+# Blue, orange, black contrast, burnt orange, gold 
+```
+
+## Comparision of daily traffic in the CBD by year. 
+
+```{r}
+
+traffic %>% 
+  mutate(hour = as.integer(hour),
+         lockdown = ifelse(date %in% mel_lockdown, "yes", "no"),
+         alpha = ifelse(date %in% mel_lockdown, 0.7, 0.2),
+         size = ifelse(date %in% mel_lockdown, 0.1, 0.2)) %>%
+  ggplot(aes(x = hour, y = cbd_volume/1000, color = lockdown, alpha = I(alpha), group = date))+
+  geom_line() +
+  scale_x_continuous(name = "Hour of Day", breaks = seq(from = 0, to = 23, by = 6)) +
+  ggtitle("Melbourne CBD traffic pattern from 2019 to 2021")+
+  ylab("Traffic volume (thousand)")+
+  scale_color_manual(name = "Underlockdown",
+                     labels = c("No", "Yes"),
+                     values=mypallete[c(3,2)])+
+  theme(legend.position = "bottom")+
+  guides(color = guide_legend(reverse = TRUE))+
+  facet_wrap(~year)+
+  theme_bw()
+
+
+```
+
+
+The graph shows a clear daily seasonal pattern in traffic volumes: There are two peaks at around 8:30 AM and 5:00 PM. This seasonality is expected as it fits with people's daily schedules. 
+
+Overall, the lockdown has a heavy effect on traffic volume, reducing volume by 25% - 50%. Curiously, there is still a peak at 3 PM. The lockdown's traffic volumes has three peaks thanks to this trend. Volumes went down the most in the evenings (about 9 pm) which might reflect the cessation of sports, trading centers and restricted on social activity. The morning and afternoon peak periods were down around 25%. The same can also be said for the inter-peak period.
+
+Moreover, another seasonality can easily be seen in the lockdown period: In several days, traffic volumes peak at noon, instead of morning or afternoon. It also presents in non-lockdown dates but is harder to see. As this type of seasonality is heavily affected by the lockdown, I suspect the days with this trend belong to the weekend and holidays. 
+
+## Calendar plot
+
+```{r}
+
+library(sugrrants)
+p1 <- traffic %>% 
+  mutate(hour = as.integer(hour),
+         lockdown = ifelse(date %in% mel_lockdown, "yes", "no")) %>%
+  filter(year >= 2020) %>%
+  frame_calendar(x = hour, y = cbd_volume, date = date, ncol = 4) %>%
+  ggplot(aes(x = .hour, y = .cbd_volume, group = date, color = lockdown)) +
+  geom_line()+
+  scale_color_manual(name = "Underlockdown",
+                      labels = c("No", "Yes"),
+                     values=mypallete[c(3,2)])+
+  theme(legend.position = "bottom")+
+  guides(color = guide_legend(reverse = TRUE))+
+  ggtitle("CBD traffic volume calendar plot, 2020-2021")
+
+prettify(p1)
+
+```
+
+
+I drew a calendar plot to see the impact of lockdown for each day and to confirm that weekends and weekdays have separate seasonality. The plot suggests that weekends do have a different trend than weekdays. Furthermore, while the peaks and troughs stay relatively the same for both weekdays and weekends, the line flattened by a large margin under lockdown, especially on weekends. However, traffic volumes recovered rapidly after lockdowns were lifted. It is worth noticing that short lockdown, especially the 5-days lockdown in February 2021, has a higher impact on traffic volumes than long lockdown.
+
+

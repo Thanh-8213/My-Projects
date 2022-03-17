@@ -1,0 +1,76 @@
+---
+title: "tidy_traffic"
+author: "Thomas Nguyen"
+date: "16/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(janitor)
+```
+
+
+```{r}
+
+# Get a list of file
+path <- here::here("data/raw-data/raw-traffic")
+files <- list.files(path)
+
+# Read a file
+# data <- read_csv(str_c(path,"/", files[1]))
+
+```
+
+```{r}
+#Automate the process useing map_dfr
+
+# The map_dfr function will take your file names, and apply read_xlsx to each file. The result for each iteration will be a data.frame similar to the previous. Finally, map_dfr concatenates the result into a single table by merging rows.
+
+
+traffic <- map_dfr(str_c(path, "/", files), fread)
+
+```
+
+
+```{r}
+# Get a small dataset
+traffic_test <- head(traffic, 1000)
+```
+
+
+
+```{r}
+# Need to avoid duplicated name to pivot
+names(traffic)[4:99] <- seq(0,24, by = 0.25) 
+
+hourly_traffic <- traffic %>% 
+  filter(NB_DETECTOR == "1") %>%
+  pivot_longer(4:99, names_to = "hour", values_to = "value" ) %>%
+  # Get only the integer number of hour
+  mutate(hour = as.numeric(substring(hour,1,2))) %>%  
+  # Avoid impossible value
+  filter(value >= 0) %>%
+  group_by(NB_SCATS_SITE, QT_INTERVAL_COUNT, hour) %>%
+  summarise(hourly_value = sum(value))
+
+
+# Daily traffic to double check with data.
+daily_traffic <- hourly_traffic %>% 
+  group_by(NB_SCATS_SITE, QT_INTERVAL_COUNT) %>% 
+  summarise(daily_value = sum(hourly_value))
+
+# Double check, same daily value
+# traffic %>% filter(NB_SCATS_SITE == "100")
+
+```
+
+```{r}
+traffic %>% filter(NB_SCATS_SITE == "100")
+```
+
