@@ -1,0 +1,220 @@
+---
+title: "randomforest"
+author: "Thomas Nguyen"
+date: "27/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(666)
+```
+
+
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(missMDA)
+library(missForest)
+```
+
+```{r}
+train <- read_csv("data/visathon_train_data.csv")
+test <-  read_csv("data/visathon_test_data.csv")
+```
+
+```{r}
+# Prepare the data: log transform skewed data
+prep_dat <- recipe(churn ~ ., data = train) %>%
+  step_log(vintage, previous_month_end_balance:previous_month_balance) %>%
+  prep(training = train,
+       strings_as_factors = TRUE) %>%
+  bake(new_data = NULL)
+
+# Remove dependents > 5
+prep_dat <- prep_dat %>% filter(dependents <= 5)
+```
+
+
+```{r}
+
+
+# Prepare training data
+prep_ts <- recipe(churn ~ ., data = train) %>%
+  step_log(vintage, previous_month_end_balance:previous_month_balance) %>%
+  prep(training = test,
+       strings_as_factors = TRUE) %>%
+  bake(new_data = NULL)
+
+# Make churn not NA, then eliminate NA so I can predict
+prep_ts <- prep_ts %>% mutate(churn = 0) 
+
+# Use missForest to impute the data
+prep_ts_impute <- missForest(as.data.frame(prep_ts))
+prep_ts_rf_impute <- prep_ts_impute$ximp
+
+# Check
+prep_ts_rf_impute %>% miss_var_summary()
+```
+
+```{r}
+# Upsample data to fix imbalance
+upsampled <- recipe(churn ~ ., data = prep_dat) %>%
+  themis::step_upsample(churn) %>%
+  prep %>%
+  bake(new_data = NULL) %>%
+  select(-customer_id)
+
+# Check
+upsampled %>% group_by(churn) %>%
+  summarise(n = n())
+```
+
+```{r}
+# Function to check importance
+arrange_imp <- function(matrix){
+  as_tibble(matrix, rownames = NA)%>%
+  rownames_to_column()%>% 
+  arrange(desc(MeanDecreaseAccuracy ))
+}
+
+view(arrange_imp(rf_mod1$fit$importance))
+
+```
+
+
+```{r}
+# First rf, include all variables
+set.seed(666)
+
+rf_mod1 <- rand_forest() %>%
+  set_engine("randomForest",
+             importance=TRUE) %>%
+  set_mode("classification") %>%
+  fit(churn~ . - gender - dependents, data = upsampled)
+
+
+```
+
+```{r}
+# Remove gender and dependents 
+set.seed(666)
+
+rf_mod2 <- rand_forest() %>%
+  set_engine("randomForest",
+             importance=TRUE) %>%
+  set_mode("classification") %>%
+  fit(churn~ current_balance + current_month_debit + current_month_balance+
+        average_monthly_balance_prevQ + previous_month_balance + previous_month_end_balance + 
+        previous_month_debit + average_monthly_balance_prevQ2+ current_month_credit+
+        previous_month_credit + days_since_last_transaction + vintage + branch_code+ 
+        age + occupation + customer_nw_category, data = upsampled)
+
+view(arrange_imp(rf_mod2$fit$importance))
+
+```
+
+
+```{r}
+# Remove age, occupation and nw category
+set.seed(666)
+
+rf_mod3 <- rand_forest() %>%
+  set_engine("randomForest",
+             importance=TRUE) %>%
+  set_mode("classification") %>%
+  fit(churn~ current_balance + current_month_debit + current_month_balance+
+        average_monthly_balance_prevQ + previous_month_balance + previous_month_end_balance + 
+        previous_month_debit + average_monthly_balance_prevQ2+ current_month_credit+
+        previous_month_credit + days_since_last_transaction + vintage + branch_code
+        , data = upsampled)
+
+view(arrange_imp(rf_mod3$fit$importance))
+
+```
+
+```{r}
+# Remove vintage and branch_code
+set.seed(666)
+
+rf_mod4 <- rand_forest() %>%
+  set_engine("randomForest",
+             importance=TRUE) %>%
+  set_mode("classification") %>%
+  fit(churn~ current_balance + current_month_debit + current_month_balance+
+        average_monthly_balance_prevQ + previous_month_balance + previous_month_end_balance + 
+        previous_month_debit + average_monthly_balance_prevQ2+ current_month_credit
+        , data = upsampled)
+
+view(arrange_imp(rf_mod4$fit$importance))
+
+```
+
+
+```{r}
+# Make prediction
+pred <- prep_ts %>% 
+  mutate(churn = as.numeric(predict(rf_mod4, prep_ts_rf_impute)$.pred_class)) %>% 
+  select(customer_id, churn)
+
+
+write_csv(pred, file="predictions_2022-03-27.csv")
+
+```
+
+```{r}
+# Remove current_month_credit+ previous_month_credit + days_since_last_transaction + vintage + branch_code
+set.seed(666)
+
+rf_mod5 <- rand_forest() %>%
+  set_engine("randomForest",
+             importance=TRUE) %>%
+  set_mode("classification") %>%
+  fit(churn~ current_balance + current_month_debit + current_month_balance+
+        average_monthly_balance_prevQ + previous_month_balance + previous_month_end_balance + 
+        previous_month_debit + average_monthly_balance_prevQ2
+        , data = upsampled)
+
+view(arrange_imp(rf_mod5$fit$importance))
+
+```
+
+
+```{r}
+# Make Prediction
+pred <- prep_ts %>% 
+  mutate(churn = as.numeric(predict(rf_mod5, prep_ts_rf_impute)$.pred_class)) %>% 
+  select(customer_id, churn)
+
+
+write_csv(pred, file="predictions_2022-03-27-rf5.csv")
+
+```
+
+```{r}
+# Remove previous_month_debit + average_monthly_balance_prevQ2
+set.seed(666)
+rf_mod6 <- rand_forest() %>%
+  set_engine("randomForest",
+             importance=TRUE) %>%
+  set_mode("classification") %>%
+  fit(churn~ current_balance + current_month_debit + current_month_balance+
+        average_monthly_balance_prevQ + previous_month_balance + previous_month_end_balance 
+        , data = upsampled)
+
+view(arrange_imp(rf_mod6$fit$importance))
+```
+
+```{r}
+# Make final prediction
+pred <- prep_ts %>% 
+  mutate(churn = as.numeric(predict(rf_mod6, prep_ts_rf_impute)$.pred_class)) %>% 
+  select(customer_id, churn)
+
+
+write_csv(pred, file="predictions_2022-03-27-rf6.csv")
+
+```
+
+
+

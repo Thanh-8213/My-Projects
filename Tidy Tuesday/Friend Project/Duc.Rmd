@@ -1,0 +1,74 @@
+---
+title: "Untitled"
+author: "Thomas Nguyen"
+date: "20/02/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(lubridate)
+rent_1bedroom <- read_excel("Duc/Moving annual rent by suburb - September quarter 2021.xlsx", 
+    sheet = "1 bedroom flat", skip = 1) %>%
+  clean_names()
+rent_2bedroom <- read_excel("Duc/Moving annual rent by suburb - September quarter 2021.xlsx", 
+    sheet = "2 bedroom flat", skip = 1) %>%
+  clean_names()
+
+colnames(rent_1bedroom)
+rent_1bedroom <- rent_1bedroom %>% rename("area" = "x1",
+                         "suburb" = "x2") %>%
+  fill(area, .direction = "down") %>%
+  filter(area == "Inner Melbourne")
+
+
+rent_1bedroom_count <- rent_1bedroom %>% select(!starts_with("x"))%>% mutate(type = "1bedroom")
+
+
+
+rent_2bedroom <- rent_2bedroom %>% rename("area" = "x1",
+                         "suburb" = "x2") %>%
+  fill(area, .direction = "down") %>%
+  filter(area == "Inner Melbourne")
+
+rent_2bedroom_count <- rent_2bedroom %>% select(!starts_with("x")) %>% mutate(type = "2bedroom")
+
+plot_dat <- rbind(rent_1bedroom_count, rent_2bedroom_count) %>%
+  pivot_longer(cols = 3:89, names_to = "date", values_to = "count") %>%
+  mutate(date = my(date),
+         quarter = quarter(date),
+         year = year(date),
+         count = as.numeric(count)) 
+  
+
+plot_dat %>%
+  filter(suburb == "CBD-St Kilda Rd") %>%
+  ggplot(aes(x = date, y = count, col = type))+
+  geom_point(size = 5)+
+  facet_wrap(~suburb, scales = "free")+
+  ggtitle("Number of leash commenced in year ending per type of flat ")+
+  xlab("Time")+
+  ylab("Number of flats")
+
+```
+
+```{r}
+plot_dat %>% ggplot(aes(y = quarter, x = count))+
+  geom_line()+
+  facet_wrap(type~area)
+```
+

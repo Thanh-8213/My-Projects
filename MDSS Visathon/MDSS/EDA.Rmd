@@ -1,0 +1,268 @@
+---
+title: "Untitled"
+author: "Thomas Nguyen"
+date: "26/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.path = "Images/", fig.height = 6, fig.width = 8)
+```
+
+
+```{r}
+library(tidyverse)
+library(naniar)
+library(kableExtra)
+```
+
+```{r}
+# Read in data
+train <- read_csv("data/visathon_train_data.csv")
+```
+
+
+```{r}
+#  Summary and missing values
+train_eda <- train %>% mutate(gender = as.factor(gender),
+                 occupation = as.factor(occupation),
+                 customer_nw_category = as.factor(customer_nw_category),
+                 churn = as.factor(churn)) 
+
+# Summary(train_eda)
+
+train_eda %>% miss_var_summary() %>%
+  kable(caption = "Missing variables summary",
+        col.names = c("Variable", "Number of missing values", "Percentage of missing values"),
+        align = "l") %>%
+  kable_styling(bootstrap_options = c("hover", "striped"), latex_options = "hold_position")
+
+```
+
+
+## Demographic vs Churn
+
+
+### Gender
+```{r}
+train_eda %>%
+  group_by(gender)%>%
+  summarise(count = n()) %>%
+  mutate(prop = count/ sum(count)) %>%
+  ggplot(aes(x = "", y = prop, fill = gender))+
+  geom_col(alpha = 0.8, stat = "identity")+
+  geom_text(aes(label = paste(round(prop*100, 1),"%")), size=4, position = position_stack(vjust = 0.5))  + 
+  coord_polar("y")+
+  scale_y_continuous(labels = scales::percent)+
+  theme_minimal()+
+  ggtitle("Pie Chart of Gender Rate")+
+  xlab("")+
+  ylab("")+
+  scale_fill_brewer(palette = "Dark2")
+
+
+```
+
+### Churn Rate
+
+```{r}
+train_eda %>%
+  group_by(churn)%>%
+  summarise(count = n()) %>%
+  mutate(prop = count/ sum(count)) %>%
+  ggplot(aes(x = "", y = prop, fill = churn))+
+  geom_col(alpha = 0.8, stat = "identity")+
+  geom_text(aes(label = paste(round(prop*100, 1),"%")), size=4, position = position_stack(vjust = 0.5))  + 
+  coord_polar("y")+
+  scale_y_continuous(labels = scales::percent)+
+  theme_minimal()+
+  ggtitle("Pie Chart of Churn rate")+
+  xlab("")+
+  ylab("")
+
+  
+
+```
+
+
+```{r}
+summary(train_eda)
+# Some people have abnormal dependents
+# Majority of people are accoutant/ engineer. Very small number of chef => Unbalance
+# Nw cat: Low and Medium
+
+# Very high balance in some customer => Log transform
+
+```
+
+
+### Vintage vs Churn
+Because vintage is very right skewed, I use logs
+```{r demographic1}
+train_eda %>% ggplot(aes(x = log(vintage), fill = churn))+
+  geom_density(alpha = 0.4) +
+  ggtitle("Logarithms of Vintage vs Churn")+
+  xlab("Natural Logarithms of Vintage")+
+  ylab("Density")+
+  theme_bw()+
+  labs(fill = "Churn")+
+  scale_y_continuous(labels = scales::percent)
+  
+```
+
+### Age vs Churn
+
+```{r demographic2}
+train_eda %>% ggplot(aes(x = age, fill = churn))+
+  geom_density(alpha = 0.4)+
+  ggtitle("Age vs Churn")+
+  xlab("Age")+
+  ylab("Density")+
+  theme_bw()+
+  labs(fill = "Churn")+
+  scale_y_continuous(labels = scales::percent)
+
+t.test(age ~ churn, data = train_eda)
+```
+
+
+### Dependents vs Churn
+```{r demographic3}
+
+train_eda %>% filter(dependents <= 5) %>%
+  group_by(dependents, churn)%>%
+  summarise(n = n()) %>%
+  ggplot(aes(x = as.factor(dependents), y = n, fill = churn))+
+  geom_col(alpha = 0.8, position = "fill")+
+  geom_text(aes(label=n), position = "fill", vjust = 1.5, size = 5)+
+  ggtitle("Dependents vs Churn",
+          subtitle = "Proportional Stacked Bar Chart for customers with less than six dependents")+
+  xlab("Number of Dependents")+
+  ylab("Density")+
+  theme_bw()+
+  labs(fill = "Churn")+
+  scale_y_continuous(labels = scales::percent)
+
+
+```
+
+### Occupication vs Churn
+```{r demographic4}
+train_eda %>% 
+  group_by(occupation, churn)%>%
+  summarise(n = n(), 
+            sum = sum(n)) %>%
+  ggplot(aes(x = as.factor(occupation), y = n, fill = churn))+
+  geom_col(alpha = 0.8, position = "fill")+
+  geom_text(aes(label=n), position = "fill", vjust = 1.5, size = 5)+
+  ggtitle("Occupation vs Churn",
+          subtitle = "Proportional Stacked Bar Chart with number of observations")+
+  xlab("Occupation")+
+  ylab("Density")+
+  theme_bw()+
+  labs(fill = "Churn")+
+  scale_y_continuous(labels = scales::percent)
+
+```
+### Occupation and Churn
+```{r}
+train_eda %>% 
+  group_by(gender, churn)%>%
+  summarise(n = n(), 
+            sum = sum(n)) %>%
+  ggplot(aes(x = as.factor(gender), y = n, fill = churn))+
+  geom_col(alpha = 0.8, position = "fill")+
+  geom_text(aes(label=n), position = "fill", vjust = 1.5, size = 5)+
+  ggtitle("Gender vs Churn",
+          subtitle = "Proportional Stacked Bar Chart with number of observations")+
+  xlab("Gender")+
+  ylab("Density")+
+  theme_bw()+
+  labs(fill = "Churn")+
+  scale_y_continuous(labels = scales::percent)
+
+```
+# Bank related Info
+
+```{r bank1}
+train_eda %>% 
+  group_by(customer_nw_category, churn)%>%
+  summarise(n = n(), 
+            sum = sum(n)) %>%
+  ggplot(aes(x = as.factor(customer_nw_category), y = n, fill = churn))+
+  geom_col(alpha = 0.8, position = "fill")+
+  geom_text(aes(label=n), position = "fill", vjust = 1.5, size = 5)+
+  ggtitle("Customer's Net worth categories vs Churn",
+          subtitle = "Proportional Stacked Bar Chart with number of observations")+
+  xlab("Networth Categories")+
+  ylab("Density")+
+  theme_bw()+
+  labs(fill = "Churn")+
+  scale_y_continuous(labels = scales::percent)
+```
+
+
+```{r bank2}
+train_eda %>% 
+  ggplot(aes(x = days_since_last_transaction, y = churn))+
+  geom_boxplot()+
+  ggtitle("Days since last transaction vs Churn")+
+  xlab("Days since last transaction Categories")+
+  ylab("Churn")+
+  theme_bw()
+
+```
+
+
+# Transactional Information
+```{r transactional1}
+train_log <- train_eda %>% select(churn, current_balance:previous_month_balance) %>% 
+  pivot_longer(cols = current_balance:previous_month_balance) %>%
+  mutate(log_value = log(value), 
+         name = recode(name,
+                       "current_balance" = "Balance as of today",
+                       "previous_month_end_balance" = "Previous Month End Balance",
+                       "average_monthly_balance_prevQ" = "(AMB) in Previous Quarter",
+                       "average_monthly_balance_prevQ2" = "(AMB) in previous to previous quarter",
+                       "current_month_credit"   = "Total Credit Amount current month",
+                       "previous_month_credit" = "Total Credit Amount previous month",
+                       "current_month_debit"   = "Total Debit Amount current month",
+                       "previous_month_debit"  = "Total Debit Amount previous month",
+                       "current_month_balance" = "Average Balance of current month",
+                       "previous_month_balance" = "Average Balance of previous month")) 
+
+
+train_log %>% 
+  ggplot(aes(x = value, fill = name))+
+  geom_density(alpha = 0.4)+
+  ggtitle("Distribution of Transactional Information data")+
+  xlab("Value")+
+  ylab("Density")+
+  theme_bw()+
+  labs(fill = "Type of Transactional Information")+
+  scale_y_continuous(labels = scales::percent)
+
+```
+
+
+```{r transactional2}  
+train_log %>% 
+  ggplot(aes(x = log_value, fill = churn))+
+  geom_density(alpha = 0.4)+
+  facet_wrap(~name)+
+  ggtitle("Transactional Information data vs Churn",
+          subtitle = "Natural Logarithm transformed")+
+  xlab("Natural Logarithm of Value")+
+  ylab("Density")+
+  theme_bw()+
+  labs(fill = "Churn")+
+  scale_y_continuous(labels = scales::percent)
+
+# No value = 9
+
+
+# Depend on current/ previous month debit
+```
+Most impacts
+
+Customers who close their accounts tend to have higher `current_balance` (Balance as of today), current_month_balance (Average Balance of current month). In contrast, They have lower current_month_debit and previous_month_debit (Total Debit Amount in current month and previous month) than their counterpart. I believe they will have high impact in bui
